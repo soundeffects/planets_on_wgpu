@@ -15,5 +15,4 @@ Star cubemap: github.com/fintelia/skyrender
 - Planet tilt
 - Night lights/voronoise
 - Fiddle with atmospheric edges
-- !Github CI for web
 - Normal mapping
