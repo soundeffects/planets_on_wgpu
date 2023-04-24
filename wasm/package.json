@@ -1,0 +1,15 @@
+{
+  "name": "planets_on_wgpu",
+  "description": "",
+  "version": "0.1.0",
+  "files": [
+    "planets_on_wgpu_bg.wasm",
+    "planets_on_wgpu.js",
+    "planets_on_wgpu.d.ts"
+  ],
+  "module": "planets_on_wgpu.js",
+  "types": "planets_on_wgpu.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
