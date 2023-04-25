@@ -156,6 +156,18 @@ impl CameraController {
                     return false;
                 }
             }
+            WindowEvent::MouseWheel {
+                delta: MouseScrollDelta::PixelDelta(scroll),
+                ..
+            } => {
+                if scroll.y > 0. {
+                    self.surface_mode = false;
+                } else if scroll.y < 0. {
+                    self.surface_mode = true;
+                } else {
+                    return false;
+                }
+            }
             WindowEvent::KeyboardInput {
                 input:
                     KeyboardInput {

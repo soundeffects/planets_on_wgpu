@@ -2,7 +2,8 @@ struct UniformData {
     view_position: vec4<f32>,
     view_projection: mat4x4<f32>,
     planet_rotation: mat4x4<f32>,
-    noise_offset: vec4<f32>
+    noise_offset: vec4<f32>,
+    cloud_offset: vec4<f32>,
 }
 @group(0) @binding(0)
 var<uniform> data: UniformData;
@@ -14,29 +15,34 @@ struct VertexInput {
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
   @location(0) normal: vec3<f32>,
-  @location(1) tangent: vec3<f32>,
-  @location(2) bitangent: vec3<f32>,
-  @location(3) noise_coordinate: vec3<f32>,
-  @location(4) latitude: f32,
-  @location(5) heat: f32,
-  @location(6) rough_height: f32,
-  @location(7) precipitation: f32,
-  @location(8) cloud_cover: f32,
+  @location(1) view_direction: vec3<f32>,
+  @location(2) noise_coordinate: vec3<f32>,
+  @location(3) latitude: f32,
+  @location(4) heat: f32,
+  @location(5) rough_height: f32,
+  @location(6) precipitation: f32,
+  @location(7) cloud_cover: f32,
 };
 
 const sea_level = 0.2;
-const sky_clearness = 0.1;
+const sky_clearness = -0.1;
+const wetness = 0.5;
+const snow_caps = 0.7;
+const coldness = 0.4;
+const cloud_speed = 0.0005;
 const light_direction = vec3<f32>(1., 0., 0.);
 const wet_color = vec3<f32>(0.08, 0.16, 0.15);
 const dry_color = vec3<f32>(0.8, 0.6, 0.5);
 const grass_color = vec3<f32>(0.2, 0.25, 0.2);
 const snow_color = vec3<f32>(1.0, 1.0, 1.0);
 const shallow_color = vec3<f32>(0.1, 0.2, 0.19);
-const deep_color = vec3<f32>(0.02, 0.05, 0.1);
+const deep_color = vec3<f32>(0.02, 0.07, 0.12);
 const cliff_color = vec3<f32>(0.17, 0.15, 0.2);
+const cloud_color = vec3<f32>(0.9, 0.9, 1.0);
 const specular_color = vec3<f32>(1., 1., 1.);
-const sunrise_color = vec3<f32>(1.0, 0.6, 0.2);
-const noon_color = vec3<f32>(0.6, 0.8, 1.0);
+const sunrise_color = vec3<f32>(0.7, 0.3, 0.);
+const day_color = vec3<f32>(0.4, 0.4, 1.);
+const night_color = vec3<f32>(0.1, 0.1, 0.1);
 
 @vertex
 fn vs_main(
@@ -47,13 +53,8 @@ fn vs_main(
     // Rotate the planet and send resulting positions
     let rotated_position = data.planet_rotation * vec4<f32>(vertex.position, 1.0);
     out.normal = normalize(rotated_position.xyz);
+    out.view_direction = normalize(data.view_position.xyz - rotated_position.xyz);
     out.clip_position = data.view_projection * rotated_position;
-
-    // Find the tangent (east) and bitangent (north) vectors for this position
-    // on the sphere
-    let normal = normalize(vertex.position);
-    out.tangent = cross(vec3<f32>(0., 1., 0.), normal);
-    out.bitangent = cross(normal, out.tangent);
 
     // Create a noise coordinate using both position and a random offset
     out.noise_coordinate = vertex.position + data.noise_offset.xyz;
@@ -85,24 +86,27 @@ fn vs_main(
 
     // Create a precipitation map made out of an inverted height map (land gets
     // less rain than sea) and some noise
-    let inverse_height = 0.3 - out.rough_height * 0.9;
+    let inverse_height = out.rough_height * 0.5;
     let precipitation_noise = octave_8 * 0.3;
-    out.precipitation = bound(inverse_height + precipitation_noise, 0.0, 1.0);
+    out.precipitation = bound(wetness - inverse_height + precipitation_noise, 0.0, 1.0);
 
     // Create wind speed, which effects how elongated (on the x-z plane) clouds
     // are
     let wind_speed = octave_2 * octave_3 + octave_5 * 0.5;
-    let wind_noise_coordinate = vec3<f32>(
+    let wind_speed_coordinate = vec3<f32>(
         out.noise_coordinate.x * rebound(wind_speed) * 2.0,
         out.noise_coordinate.y * 3.0,
         out.noise_coordinate.z * rebound(wind_speed) * 2.0
     );
+    
+    // Adjust cloud coordinate to cloud offset (for moving clouds)
+    let cloud_coordinate = wind_speed_coordinate + data.cloud_offset.xyz * cloud_speed;
 
     // For cloud cover, use composite noise of wind speed, along with a few
     // additional noise layers
-    let cloud_noise_1 = simplex(wind_noise_coordinate);
-    let cloud_noise_2 = octave_6;
-    let cloud_noise_3 = octave_8 * octave_9;
+    let cloud_noise_1 = simplex(cloud_coordinate);
+    let cloud_noise_2 = simplex(cloud_coordinate * 3.05);
+    let cloud_noise_3 = simplex(cloud_coordinate * 6.05);
     out.cloud_cover = cloud_noise_1 + cloud_noise_2 * 0.5 + cloud_noise_3 * 0.15 - sky_clearness;
 
     return out;
@@ -110,60 +114,119 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Create high frequency noise octaves to add detail to surface maps
-    let octave_1 = simplex(in.noise_coordinate * 12.0);
-    let octave_2 = simplex(in.noise_coordinate * 16.0);
-    let octave_3 = simplex(in.noise_coordinate * 32.0);
-    let octave_4 = simplex(in.noise_coordinate * 28.0);
-    let octave_5 = simplex(in.noise_coordinate * 64.0);
-
     // Add detail to height map
-    let height_noise = octave_1 * 0.2 + octave_3 * 0.1 + octave_5 * 0.05;
+    let height_1 = simplex(in.noise_coordinate * 12.0);
+    let height_2 = simplex(in.noise_coordinate * 32.0);
+    let height_3 = simplex(in.noise_coordinate * 64.0);
+    let height_noise = height_1 * 0.2 + height_2 * 0.1 + height_3 * 0.05;
     let detailed_height = in.rough_height + height_noise;
 
     // Add detail to cloud map
-    let cloud_noise = octave_2 * 0.2 + octave_4 * 0.5;
+    let cloud_coordinate = in.noise_coordinate + data.cloud_offset.xyz * cloud_speed;
+    let cloud_1 = simplex(cloud_coordinate * 16.0);
+    let cloud_2 = simplex(cloud_coordinate * 28.0);
+    let cloud_noise = cloud_1 * 0.2 + cloud_2 * 0.2;
     let detailed_cloud_cover = in.cloud_cover + cloud_noise;
 
+    // Compute the atmosphere color based on the angle of incident as light
+    // enters the atmosphere
+    let light_incident = rebound(dot(in.normal, light_direction));
+    let night_ramp = logistic(light_incident, 0.45, 20.0);
+    let day_ramp = logistic(light_incident, 0.55, 20.0);
+    var atmosphere_color = blend(night_ramp, 1.0, night_color, sunrise_color);
+    atmosphere_color = blend(day_ramp, 1.0, atmosphere_color, day_color);
+
     // Create context variables for use while branching
-    let raw_geometry_term = dot(in.normal, light_direction);
-    let geometry_term = max(raw_geometry_term, 0.0);
-    let atmosphere_geometry_term = max(logistic(raw_geometry_term, 0.1, 1.), 0.0);
-    let atmosphere_color = blend(atmosphere_geometry_term, 0.75, sunrise_color, noon_color);
+    let height_dx = dpdx(detailed_height);
+    let height_dy = dpdy(detailed_height);
+    var geometry_term: f32;
     var terrain_color: vec3<f32>;
-    var specular_component: vec4<f32>;
 
     // Branch based on our surface maps for coloring the terrain
     // First branch deals with land (heights greater than zero)
     if (detailed_height >= 0.) {
-        terrain_color = dry_color;
+        // Blend between dry and wet
+        let wet_layer = blend(in.precipitation, 0.45, dry_color, wet_color);
 
-        // Usually, at a planet scale, the speculars will only show on the
-        // surface of the ocean. Therefore, we leave the specular component
-        // black.
-        specular_component = vec4<f32>(0.0);
+        // Blend between cliffs and flatlands
+        let ridge_layer = blend(detailed_height, 1.0, wet_layer, cliff_color);
+
+        // Add snow at the tops of ridges
+        let snow_ramp = logistic(detailed_height, snow_caps, 10.0);
+        let ridge_snow_layer = blend(snow_ramp, 1.0, ridge_layer, snow_color);
+
+        // Blend between cold poles and warm equatorial regions
+        let equator_ramp = logistic(in.heat, coldness, 10.0);
+        let cold_layer = blend(equator_ramp, 0.5, snow_color, ridge_snow_layer);
+
+        // Add some grass color to flatlands
+        let grass_layer = blend(detailed_height, 0.4, grass_color, vec3<f32>(0.));
+
+        // Composite the final terrain color
+        terrain_color = cold_layer + grass_layer * 0.4;
+
+        // Add screen-space derivatives of height to the normal for a subtle
+        // shadow on ridges at sunrise
+        let terrain_normal = vec3<f32>(
+            in.normal.x + height_dx * 0.3,
+            in.normal.y + height_dy * 0.3,
+            in.normal.z
+        );
+
+        // Compute geometry term based on this adjusted normal
+        geometry_term = max(dot(terrain_normal, light_direction), 0.0);
+
 
     // Now we deal with water (heights less than zero)
     } else {
+        // Blend between shallow and deep oceans
         let depth = abs(detailed_height);
         terrain_color = blend(depth, 0.1, shallow_color, deep_color) / (depth * 0.2 + 1.0);
 
-        // Compute specular component
+        // Compute geometry term trivially, since the ocean's surface does not
+        // affect the normal
+        geometry_term = max(dot(in.normal, light_direction), 0.0);
+
+        // Add specular lighting to the water
         let half_vector = normalize(normalize(data.view_position.xyz) + light_direction);
         let blinn_term = pow(max(dot(in.normal, half_vector), 0.0), 40.0);
-        specular_component = vec4<f32>(atmosphere_color, 1.0) * blinn_term * geometry_term * 0.2;
+        terrain_color += atmosphere_color * blinn_term * geometry_term * 0.2;
     }
 
-    // Now that we have the terrain color, the diffuse/ambient color is easy to
-    // compute
+    // Some more context variables for use when branching at clouds
+    let cloud_dx = dpdx(detailed_cloud_cover);
+    let cloud_dy = dpdy(detailed_cloud_cover);
+
+    // Blend with cloud layer
+    if (detailed_cloud_cover >= 0.) {
+        // Blend into the cloud color when covered by clouds
+        terrain_color = blend(detailed_cloud_cover, 0.5, terrain_color, cloud_color);
+
+        // Add screen-space derivatives of cloud cover to the normal for a
+        // subtle bumpiness
+        let cloud_normal = vec3<f32>(
+            in.normal.x + cloud_dx * 0.15,
+            in.normal.y + cloud_dy * 0.15,
+            in.normal.z
+        );
+
+        // Overwrite geometry term for clouds
+        geometry_term = max(dot(cloud_normal, light_direction), 0.0);
+    }
+
+    // Now we can compute diffuse and ambient lighting for the given color
     let diffuse_color = vec4<f32>(terrain_color, 1.0);
     let diffuse_component = diffuse_color * geometry_term;
     let ambient_component = diffuse_color * 0.01;
 
-    let haze_component = vec4<f32>(atmosphere_color, 1.0) * band(atmosphere_geometry_term, 0.0, 0.15) * 0.2;
+    // Add atmosphere color if the viewing angle of incident is steep (meaning
+    // atmosphere color will be added at the edges of the sphere)
+    let view_incident = 1.0 - max(dot(in.view_direction, in.normal), 0.0);
+    let view_incident_ramp = logistic(view_incident, 0.8, 10.0);
+    let atmosphere_component = vec4<f32>(atmosphere_color, 1.0) * view_incident_ramp * 0.2;
 
     // Composite all color components
-    return diffuse_component + ambient_component + specular_component + haze_component;
+    return diffuse_component + ambient_component + atmosphere_component;
 }
 
 // Helpers
@@ -259,6 +322,10 @@ fn simplex(v: vec3<f32>) -> f32 {
   // Mix final noise value
   var m: vec4<f32> = 0.6 - vec4<f32>(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3));
   m = max(m, vec4<f32>(0.));
-  m = m * m;
-  return 42. * dot(m * m, vec4<f32>(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+  let m2 = m * m;
+  let m4 = m2 * m2;
+
+  let px = vec4<f32>(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3));
+
+  return 42. * dot(m4, px);
 }

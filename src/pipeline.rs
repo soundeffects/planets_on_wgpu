@@ -148,6 +148,7 @@ impl Pipeline {
         self.uniform_data.update_camera(&self.camera);
 
         self.planet.increment_rotation();
+        self.planet.increment_clouds();
         self.uniform_data.update_planet(&self.planet);
 
         // Send a write command to the GPU for the new camera matrix.
@@ -187,6 +188,7 @@ pub struct UniformData {
     view_projection: [[f32; 4]; 4],
     planet_rotation: [[f32; 4]; 4],
     noise_offset: [f32; 4],
+    cloud_offset: [f32; 4],
 }
 
 impl UniformData {
@@ -196,6 +198,7 @@ impl UniformData {
             view_projection: cgmath::Matrix4::identity().into(),
             planet_rotation: cgmath::Matrix4::identity().into(),
             noise_offset: [0.; 4],
+            cloud_offset: [0.; 4],
         }
     }
 
@@ -206,6 +209,7 @@ impl UniformData {
 
     pub fn update_planet(&mut self, planet: &Planet) {
         self.planet_rotation = planet.rotation();
+        self.cloud_offset = [planet.cloud_offset() as f32; 4];
         let offsets = planet.noise_offset();
         self.noise_offset = [offsets[0], offsets[1], offsets[2], 0.];
     }

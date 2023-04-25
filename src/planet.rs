@@ -13,6 +13,7 @@ pub struct Planet {
     rotation: u32,
     tilt: [i32; 2],
     noise_offset: [f32; 3],
+    cloud_offset: u32,
 }
 
 impl Planet {
@@ -45,11 +46,16 @@ impl Planet {
             rotation: 0,
             tilt: [fastrand::i32(-35..35), fastrand::i32(-35..35)],
             noise_offset: [fastrand::f32(), fastrand::f32(), fastrand::f32()],
+            cloud_offset: 0,
         }
     }
 
     pub fn increment_rotation(&mut self) {
         self.rotation += 1;
+    }
+
+    pub fn increment_clouds(&mut self) {
+        self.cloud_offset += 1;
     }
 
     pub fn reroll(&mut self) {
@@ -80,6 +86,10 @@ impl Planet {
 
     pub fn noise_offset(&self) -> [f32; 3] {
         self.noise_offset
+    }
+
+    pub fn cloud_offset(&self) -> u32 {
+        self.cloud_offset
     }
 }
 
