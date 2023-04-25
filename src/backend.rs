@@ -2,14 +2,14 @@ use bytemuck::NoUninit;
 use wgpu::{util::DeviceExt, *};
 use winit::window::Window;
 
-use crate::texture::Texture;
-
 pub struct Backend {
-    surface: wgpu::Surface,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
+    surface: Surface,
+    device: Device,
+    queue: Queue,
+    config: SurfaceConfiguration,
     depth_texture: Texture,
+    depth_view: TextureView,
+    depth_sampler: Sampler,
     frame_count: u32,
 }
 
@@ -82,7 +82,8 @@ impl Backend {
         surface.configure(&device, &config);
 
         // Create a depth texture, for rendering occluding surfaces properly
-        let depth_texture = Texture::create_depth_texture(&device, &config, "Main Depth Texture");
+        let (depth_texture, depth_view, depth_sampler) =
+            Self::create_depth_texture(&device, config.width, config.height);
 
         Self {
             surface,
@@ -90,8 +91,50 @@ impl Backend {
             queue,
             config,
             depth_texture,
+            depth_view,
+            depth_sampler,
             frame_count: 0,
         }
+    }
+
+    pub fn create_depth_texture(
+        device: &Device,
+        width: u32,
+        height: u32,
+    ) -> (Texture, TextureView, Sampler) {
+        let size = Extent3d {
+            width: width,
+            height: height,
+            depth_or_array_layers: 1,
+        };
+
+        let depth_texture = device.create_texture(&TextureDescriptor {
+            label: Some("Depth Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Depth32Float,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let depth_view = depth_texture.create_view(&TextureViewDescriptor::default());
+
+        let depth_sampler = device.create_sampler(&SamplerDescriptor {
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            mipmap_filter: FilterMode::Nearest,
+            compare: Some(CompareFunction::LessEqual),
+            lod_min_clamp: 0.,
+            lod_max_clamp: 100.,
+            ..Default::default()
+        });
+
+        (depth_texture, depth_view, depth_sampler)
     }
 
     pub fn submit_render(
@@ -129,7 +172,7 @@ impl Backend {
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &self.depth_texture.view,
+                view: &self.depth_view,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
                     store: true,
@@ -181,8 +224,11 @@ impl Backend {
 
     pub fn reconfigure(&mut self) {
         self.surface.configure(&self.device, &self.config);
-        self.depth_texture =
-            Texture::create_depth_texture(&self.device, &self.config, "Main Depth Texture");
+        let (depth_texture, depth_view, depth_sampler) =
+            Self::create_depth_texture(&self.device, self.config.width, self.config.height);
+        self.depth_texture = depth_texture;
+        self.depth_view = depth_view;
+        self.depth_sampler = depth_sampler;
     }
 
     // Accessors

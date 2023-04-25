@@ -12,7 +12,7 @@ impl State {
         // Our pipeline class handles rendering models and camera transforms
         let pipeline = Pipeline::new(Backend::new(window).await);
 
-        let controller = CameraController::new(0.2);
+        let controller = CameraController::new(3.5, 1.5, 0.05, 0.0005, 0.15, 0.001, 0.2);
 
         Self {
             pipeline,
@@ -35,7 +35,7 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        self.pipeline.update(&self.controller);
+        self.pipeline.update(&mut self.controller);
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {

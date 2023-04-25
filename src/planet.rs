@@ -11,12 +11,13 @@ pub struct Planet {
     index_buffer: Buffer,
     index_count: u32,
     rotation: u32,
+    tilt: [i32; 2],
     noise_offset: [f32; 3],
 }
 
 impl Planet {
     pub fn new(backend: &Backend) -> Self {
-        let sphere = IcoSphere::new(20, |_| ());
+        let sphere = IcoSphere::new(10, |_| ());
         let vertices = sphere
             .raw_points()
             .iter()
@@ -42,6 +43,7 @@ impl Planet {
             index_buffer,
             index_count: sphere.get_all_indices().len() as u32,
             rotation: 0,
+            tilt: [fastrand::i32(-35..35), fastrand::i32(-35..35)],
             noise_offset: [fastrand::f32(), fastrand::f32(), fastrand::f32()],
         }
     }
@@ -51,13 +53,17 @@ impl Planet {
     }
 
     pub fn reroll(&mut self) {
+        self.tilt = [fastrand::i32(-25..25), fastrand::i32(-25..25)];
         self.noise_offset = [fastrand::f32(), fastrand::f32(), fastrand::f32()]
     }
 
     // Accessors
 
     pub fn rotation(&self) -> [[f32; 4]; 4] {
-        Matrix4::from_angle_y(Deg(self.rotation as f32 / 4.)).into()
+        (Matrix4::from_angle_x(Deg(self.tilt[0] as f32))
+            * Matrix4::from_angle_z(Deg(self.tilt[1] as f32))
+            * Matrix4::from_angle_y(Deg(self.rotation as f32 / 8.)))
+        .into()
     }
 
     pub fn vertex_buffer(&self) -> &Buffer {

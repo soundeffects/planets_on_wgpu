@@ -1,4 +1,3 @@
-// Vertex shader
 struct UniformData {
     view_position: vec4<f32>,
     view_projection: mat4x4<f32>,
@@ -14,105 +13,160 @@ struct VertexInput {
 
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
-  @location(0) position: vec3<f32>,
-  @location(1) planet_coordinate: vec3<f32>
+  @location(0) normal: vec3<f32>,
+  @location(1) tangent: vec3<f32>,
+  @location(2) bitangent: vec3<f32>,
+  @location(3) noise_coordinate: vec3<f32>,
+  @location(4) latitude: f32,
+  @location(5) heat: f32,
+  @location(6) rough_height: f32,
+  @location(7) precipitation: f32,
+  @location(8) cloud_cover: f32,
 };
+
+const sea_level = 0.2;
+const sky_clearness = 0.1;
+const light_direction = vec3<f32>(1., 0., 0.);
+const wet_color = vec3<f32>(0.08, 0.16, 0.15);
+const dry_color = vec3<f32>(0.8, 0.6, 0.5);
+const grass_color = vec3<f32>(0.2, 0.25, 0.2);
+const snow_color = vec3<f32>(1.0, 1.0, 1.0);
+const shallow_color = vec3<f32>(0.1, 0.2, 0.19);
+const deep_color = vec3<f32>(0.02, 0.05, 0.1);
+const cliff_color = vec3<f32>(0.17, 0.15, 0.2);
+const specular_color = vec3<f32>(1., 1., 1.);
+const sunrise_color = vec3<f32>(1.0, 0.6, 0.2);
+const noon_color = vec3<f32>(0.6, 0.8, 1.0);
 
 @vertex
 fn vs_main(
     vertex: VertexInput
 ) -> VertexOutput {
     var out: VertexOutput;
+
+    // Rotate the planet and send resulting positions
     let rotated_position = data.planet_rotation * vec4<f32>(vertex.position, 1.0);
-    out.position = rotated_position.xyz * 2.0;
-    out.planet_coordinate = vertex.position;
+    out.normal = normalize(rotated_position.xyz);
     out.clip_position = data.view_projection * rotated_position;
+
+    // Find the tangent (east) and bitangent (north) vectors for this position
+    // on the sphere
+    let normal = normalize(vertex.position);
+    out.tangent = cross(vec3<f32>(0., 1., 0.), normal);
+    out.bitangent = cross(normal, out.tangent);
+
+    // Create a noise coordinate using both position and a random offset
+    out.noise_coordinate = vertex.position + data.noise_offset.xyz;
+
+    // Rough approximation of the latitude (angle above equator)
+    out.latitude = 1.0 - dot(normalize(vertex.position), normalize(vec3<f32>(vertex.position.x, 0.0, vertex.position.z)));
+
+    // Compute noise octaves for generating surface maps
+    let octave_1 = simplex(out.noise_coordinate);
+    let octave_2 = simplex(out.noise_coordinate * 1.5);
+    let octave_3 = simplex(out.noise_coordinate * 1.6);
+    let octave_4 = simplex(out.noise_coordinate * 2.0);
+    let octave_5 = simplex(out.noise_coordinate * 3.0);
+    let octave_6 = simplex(out.noise_coordinate * 3.1);
+    let octave_7 = simplex(out.noise_coordinate * 4.0);
+    let octave_8 = simplex(out.noise_coordinate * 6.0);
+    let octave_9 = simplex(out.noise_coordinate * 6.1);
+
+    // Create a slightly noisy heat map, with equatorial regions getting hotter
+    let vertical_heat = 1.0 - out.latitude * 1.3;
+    let heat_noise = 0.2 + rebound(octave_1) * 0.8;
+    out.heat = bound(vertical_heat * heat_noise, 0.0, 1.0);
+
+    // Create a rough height map out of ice caps (high latitude), several
+    // noise layers, and a global sea level
+    let ice_caps = bound(out.latitude - 0.5, 0.0, 0.2) * 4.5;
+    let height_noise = octave_1 + octave_4 * 0.65 + octave_7 * 0.25 - sea_level;
+    out.rough_height = height_noise + ice_caps;
+
+    // Create a precipitation map made out of an inverted height map (land gets
+    // less rain than sea) and some noise
+    let inverse_height = 0.3 - out.rough_height * 0.9;
+    let precipitation_noise = octave_8 * 0.3;
+    out.precipitation = bound(inverse_height + precipitation_noise, 0.0, 1.0);
+
+    // Create wind speed, which effects how elongated (on the x-z plane) clouds
+    // are
+    let wind_speed = octave_2 * octave_3 + octave_5 * 0.5;
+    let wind_noise_coordinate = vec3<f32>(
+        out.noise_coordinate.x * rebound(wind_speed) * 2.0,
+        out.noise_coordinate.y * 3.0,
+        out.noise_coordinate.z * rebound(wind_speed) * 2.0
+    );
+
+    // For cloud cover, use composite noise of wind speed, along with a few
+    // additional noise layers
+    let cloud_noise_1 = simplex(wind_noise_coordinate);
+    let cloud_noise_2 = octave_6;
+    let cloud_noise_3 = octave_8 * octave_9;
+    out.cloud_cover = cloud_noise_1 + cloud_noise_2 * 0.5 + cloud_noise_3 * 0.15 - sky_clearness;
+
     return out;
 }
 
-// Fragment shader
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let normal = normalize(in.position);
-    let light_direction = vec3<f32>(1.0, 0.0, 0.0);
-    let noise_coordinate = in.planet_coordinate + data.noise_offset.xyz;
-    //let sampled_normal: vec4<f32> = textureSample(normal_texture, normal_sampler, in.texture_coordinates);
-    //let normal: vec3<f32> = normalize(sampled_normal.xyz * 2.0 - 1.0);
+    // Create high frequency noise octaves to add detail to surface maps
+    let octave_1 = simplex(in.noise_coordinate * 12.0);
+    let octave_2 = simplex(in.noise_coordinate * 16.0);
+    let octave_3 = simplex(in.noise_coordinate * 32.0);
+    let octave_4 = simplex(in.noise_coordinate * 28.0);
+    let octave_5 = simplex(in.noise_coordinate * 64.0);
 
-    let latitude = 1.0 - logistic(abs(noise_coordinate.y) * 0.5, 0.5, 10.0);
+    // Add detail to height map
+    let height_noise = octave_1 * 0.2 + octave_3 * 0.1 + octave_5 * 0.05;
+    let detailed_height = in.rough_height + height_noise;
 
-    let ice_coverage = 2.0;
-    let ice_caps = logistic(abs(noise_coordinate.y) * 0.5, 1.0, 50.0) * ice_coverage;
+    // Add detail to cloud map
+    let cloud_noise = octave_2 * 0.2 + octave_4 * 0.5;
+    let detailed_cloud_cover = in.cloud_cover + cloud_noise;
 
-    let sea_level = 0.2;
-
-    let heat = 0.2 + latitude - ice_caps +
-        simplex(noise_coordinate * 0.5) * 0.02 +
-        simplex(noise_coordinate) * 0.1;
-
-    let precipitation = latitude * 0.1 +
-        normalized_simplex(noise_coordinate * 0.5) * 0.6 +
-        normalized_simplex(noise_coordinate) * 0.3;
-
-    let height =
-        ice_caps * 5.0 - sea_level +
-        simplex(noise_coordinate * 0.5) +
-        simplex(noise_coordinate) +
-        simplex(noise_coordinate * 2.0) * 0.5 +
-        simplex(noise_coordinate * 4.0) * 0.25 +
-        simplex(noise_coordinate * 8.0) * 0.125 +
-        simplex(noise_coordinate * 16.0) * 0.08 +
-        simplex(noise_coordinate * 32.0) * 0.04 +
-        simplex(noise_coordinate * 64.0) * 0.02;
-
-    let wet_color = vec3<f32>(0.08, 0.16, 0.15);
-    let dry_color = vec3<f32>(0.8, 0.6, 0.5);
-    let grass_color = vec3<f32>(0.2, 0.25, 0.2);
-    let snow_color = vec3<f32>(1.0, 1.0, 1.0);
-    let shallow_color = vec3<f32>(0.1, 0.2, 0.19);
-    let deep_color = vec3<f32>(0.02, 0.05, 0.1);
-    let cliff_color = vec3<f32>(0.17, 0.15, 0.2);
-
-    let terrain_color =
-        band(height, -3.0, -0.1) * deep_color +
-        band(height, -0.2, 0.0) * (
-            band(heat, -3.0, 0.5) * deep_color +
-            band(heat, 0.5, 1.5) * shallow_color
-        ) +
-        band(height, 0.0, 0.9) * (
-            band(heat, -3.0, 0.1) * snow_color +
-            band(heat, 0.1, 0.2) * cliff_color + 
-            band(heat, 0.2, 1.5) * dry_color
-        ) +
-        band(height, 0.9, 20.0) * (
-            band(heat, -3.0, 0.6) * snow_color +
-            band(heat, 0.6, 1.5) * cliff_color
-        );
-    
-    let diffuse_color = vec4<f32>(terrain_color, 1.0);//textureSample(diffuse_texture, diffuse_sampler, in.uv);
-    let raw_geometry_term = dot(normal, light_direction);
+    // Create context variables for use while branching
+    let raw_geometry_term = dot(in.normal, light_direction);
     let geometry_term = max(raw_geometry_term, 0.0);
+    let atmosphere_geometry_term = max(logistic(raw_geometry_term, 0.1, 1.), 0.0);
+    let atmosphere_color = blend(atmosphere_geometry_term, 0.75, sunrise_color, noon_color);
+    var terrain_color: vec3<f32>;
+    var specular_component: vec4<f32>;
+
+    // Branch based on our surface maps for coloring the terrain
+    // First branch deals with land (heights greater than zero)
+    if (detailed_height >= 0.) {
+        terrain_color = dry_color;
+
+        // Usually, at a planet scale, the speculars will only show on the
+        // surface of the ocean. Therefore, we leave the specular component
+        // black.
+        specular_component = vec4<f32>(0.0);
+
+    // Now we deal with water (heights less than zero)
+    } else {
+        let depth = abs(detailed_height);
+        terrain_color = blend(depth, 0.1, shallow_color, deep_color) / (depth * 0.2 + 1.0);
+
+        // Compute specular component
+        let half_vector = normalize(normalize(data.view_position.xyz) + light_direction);
+        let blinn_term = pow(max(dot(in.normal, half_vector), 0.0), 40.0);
+        specular_component = vec4<f32>(atmosphere_color, 1.0) * blinn_term * geometry_term * 0.2;
+    }
+
+    // Now that we have the terrain color, the diffuse/ambient color is easy to
+    // compute
+    let diffuse_color = vec4<f32>(terrain_color, 1.0);
     let diffuse_component = diffuse_color * geometry_term;
+    let ambient_component = diffuse_color * 0.01;
 
-    let ambient_component = diffuse_color * 0.005;
+    let haze_component = vec4<f32>(atmosphere_color, 1.0) * band(atmosphere_geometry_term, 0.0, 0.15) * 0.2;
 
-    let haze_color = vec4<f32>(1.0, 0.6, 0.2, 1.0);
-    let haze_strength = band(raw_geometry_term, 0.05, 0.15);
-
-    let specular_color = vec4<f32>(band(height, -3.0, 0.0));
-    let half_vector = normalize(normalize(data.view_position.xyz) + light_direction);
-    let blinn_term = pow(max(dot(normal, half_vector), 0.0), 40.0);
-    let specular_component = (
-        haze_strength * haze_color * 10.0 +
-        band(raw_geometry_term, 0.15, 1.0) * specular_color
-    ) * blinn_term * geometry_term * 0.2;
-
-    
-    let haze_component = haze_strength * haze_color * 0.02;
-    
+    // Composite all color components
     return diffuse_component + ambient_component + specular_component + haze_component;
 }
+
+// Helpers
 
 fn logistic(x: f32, x_0: f32, k: f32) -> f32 {
     return 1.0 / (1.0 + exp(-k * (x - x_0)));
@@ -120,6 +174,20 @@ fn logistic(x: f32, x_0: f32, k: f32) -> f32 {
 
 fn band(x: f32, min: f32, max: f32) -> f32 {
     return logistic(x, min, 20.0) - logistic(x, max, 20.0);
+}
+
+fn bound(x: f32, min: f32, max: f32) -> f32 {
+    return min(max(x, min), max);
+}
+
+fn rebound(x: f32) -> f32 {
+    return x * 0.5 + 0.5;
+}
+
+fn blend(x: f32, limit: f32, from_color: vec3<f32>, to_color: vec3<f32>) -> vec3<f32> {
+    let factor = 1.0 / limit;
+    let discriminator = bound(x * factor, 0.0, 1.0);
+    return from_color * (1.0 - discriminator) + to_color * discriminator;
 }
 
 //  Simplex algorithm in WGSL. MIT License. © Ian McEwan, Stefan Gustavson, Munrocket
@@ -193,8 +261,4 @@ fn simplex(v: vec3<f32>) -> f32 {
   m = max(m, vec4<f32>(0.));
   m = m * m;
   return 42. * dot(m * m, vec4<f32>(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-}
-
-fn normalized_simplex(v: vec3<f32>) -> f32 {
-    return simplex(v) * 0.5 + 0.5;
 }

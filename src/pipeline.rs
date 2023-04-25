@@ -5,7 +5,6 @@ use crate::{
     backend::{Backend, DrawCall},
     camera::{Camera, CameraController},
     planet::{Planet, Vertex},
-    texture::Texture,
 };
 
 pub struct Pipeline {
@@ -23,11 +22,11 @@ impl Pipeline {
         // Create our camera object, for tracking the data needed to create the
         // camera space transforms.
         let camera = Camera::new(
-            (0., 1., 2.).into(),
+            (0., 2., 3.).into(),
             (0., 0., 0.).into(),
             cgmath::Vector3::unit_y(),
             backend.width() as f32 / backend.height() as f32,
-            45.,
+            50.,
             0.1,
             100.,
         );
@@ -75,57 +74,56 @@ impl Pipeline {
         });
 
         // Importing our shader code
-        let shader = backend.create_shader(wgpu::ShaderModuleDescriptor {
+        let shader = backend.create_shader(ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+            source: ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
         // Creating a default render pipeline layout
-        let render_pipeline_layout =
-            backend.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&uniform_bind_group_layout],
-                ..Default::default()
-            });
+        let render_pipeline_layout = backend.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[&uniform_bind_group_layout],
+            ..Default::default()
+        });
 
         // Define our render pipeline using the shaders and the layout
-        let render_pipeline = backend.create_pipeline(&wgpu::RenderPipelineDescriptor {
+        let render_pipeline = backend.create_pipeline(&RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
+            vertex: VertexState {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &[Vertex::desc()],
             },
             // Our format is sRGB, we replace instead of blending, and we write
             // to all values (RGBA values).
-            fragment: Some(wgpu::FragmentState {
+            fragment: Some(FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
+                targets: &[Some(ColorTargetState {
                     format: backend.format(),
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
+                    blend: Some(BlendState::REPLACE),
+                    write_mask: ColorWrites::ALL,
                 })],
             }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleList,
                 strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
+                front_face: FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                polygon_mode: PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: Texture::DEPTH_FORMAT,
+            depth_stencil: Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
                 depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
+                depth_compare: CompareFunction::Less,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
             }),
             // No multisample anti-aliasing.
-            multisample: wgpu::MultisampleState {
+            multisample: MultisampleState {
                 count: 1,
                 mask: !0,
                 alpha_to_coverage_enabled: false,
@@ -144,7 +142,7 @@ impl Pipeline {
         }
     }
 
-    pub fn update(&mut self, controller: &CameraController) {
+    pub fn update(&mut self, controller: &mut CameraController) {
         // Compute new camera matrix.
         controller.update_camera(&mut self.camera);
         self.uniform_data.update_camera(&self.camera);
@@ -157,7 +155,7 @@ impl Pipeline {
             .submit_write(&self.uniform_buffer, &[self.uniform_data]);
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self) -> Result<(), SurfaceError> {
         let draw_calls = vec![DrawCall {
             vertex_buffer: self.planet.vertex_buffer().slice(..),
             index_buffer: self.planet.index_buffer().slice(..),
