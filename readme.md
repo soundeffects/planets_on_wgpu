@@ -2,4 +2,4 @@
 James Youngblood
 
 # Credits
-Learn WGPU: https://sotrh.github.io/learn-wgpu/
+Learn WGPU: https://sotrh.github.io/learn-wgpu/d

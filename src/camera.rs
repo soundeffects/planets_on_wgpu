@@ -6,6 +6,8 @@ use winit::{
     },
 };
 
+use crate::planet::Planet;
+
 pub struct Camera {
     position: Point3<f32>,
     target: Point3<f32>,
@@ -82,6 +84,7 @@ pub struct CameraController {
     surface_distance: f64,
     surface_mode: bool,
     surface_interpolation: f64,
+    disable_clouds: bool,
 }
 
 impl CameraController {
@@ -107,6 +110,7 @@ impl CameraController {
             surface_distance,
             surface_mode: false,
             surface_interpolation: 0.,
+            disable_clouds: false,
         }
     }
 
@@ -196,6 +200,9 @@ impl CameraController {
                     VirtualKeyCode::Space => {
                         self.surface_mode = !self.surface_mode;
                     }
+                    VirtualKeyCode::C => {
+                        self.disable_clouds = !self.disable_clouds;
+                    }
                     _ => return false,
                 }
                 if self.surface_mode {
@@ -272,6 +279,10 @@ impl CameraController {
         } else {
             self.motion *= 0.9;
         }
+    }
+
+    pub fn update_planet(&self, planet: &mut Planet) {
+        planet.cloud_setting(self.disable_clouds);
     }
 
     // Helpers

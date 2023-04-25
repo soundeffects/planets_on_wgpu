@@ -1,4 +1,4 @@
-use cgmath::{Deg, Matrix4};
+use cgmath::{Deg, Matrix4, SquareMatrix};
 use hexasphere::shapes::IcoSphere;
 use std::mem::size_of;
 
@@ -14,6 +14,7 @@ pub struct Planet {
     tilt: [i32; 2],
     noise_offset: [f32; 3],
     cloud_offset: u32,
+    disable_clouds: bool,
 }
 
 impl Planet {
@@ -47,6 +48,7 @@ impl Planet {
             tilt: [fastrand::i32(-35..35), fastrand::i32(-35..35)],
             noise_offset: [fastrand::f32(), fastrand::f32(), fastrand::f32()],
             cloud_offset: 0,
+            disable_clouds: false,
         }
     }
 
@@ -55,7 +57,13 @@ impl Planet {
     }
 
     pub fn increment_clouds(&mut self) {
-        self.cloud_offset += 1;
+        if !self.disable_clouds {
+            self.cloud_offset += 1;
+        }
+    }
+
+    pub fn cloud_setting(&mut self, setting: bool) {
+        self.disable_clouds = setting;
     }
 
     pub fn reroll(&mut self) {
@@ -90,6 +98,10 @@ impl Planet {
 
     pub fn cloud_offset(&self) -> u32 {
         self.cloud_offset
+    }
+
+    pub fn clouds_disabled(&self) -> bool {
+        self.disable_clouds
     }
 }
 

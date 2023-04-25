@@ -4,6 +4,7 @@ struct UniformData {
     planet_rotation: mat4x4<f32>,
     noise_offset: vec4<f32>,
     cloud_offset: vec4<f32>,
+    clouds_disabled: vec4<i32>,
 }
 @group(0) @binding(0)
 var<uniform> data: UniformData;
@@ -17,11 +18,10 @@ struct VertexOutput {
   @location(0) normal: vec3<f32>,
   @location(1) view_direction: vec3<f32>,
   @location(2) noise_coordinate: vec3<f32>,
-  @location(3) latitude: f32,
-  @location(4) heat: f32,
-  @location(5) rough_height: f32,
-  @location(6) precipitation: f32,
-  @location(7) cloud_cover: f32,
+  @location(3) heat: f32,
+  @location(4) rough_height: f32,
+  @location(5) precipitation: f32,
+  @location(6) cloud_cover: f32,
 };
 
 const sea_level = 0.2;
@@ -60,7 +60,7 @@ fn vs_main(
     out.noise_coordinate = vertex.position + data.noise_offset.xyz;
 
     // Rough approximation of the latitude (angle above equator)
-    out.latitude = 1.0 - dot(normalize(vertex.position), normalize(vec3<f32>(vertex.position.x, 0.0, vertex.position.z)));
+    let latitude = 1.0 - dot(normalize(vertex.position), normalize(vec3<f32>(vertex.position.x, 0.0, vertex.position.z)));
 
     // Compute noise octaves for generating surface maps
     let octave_1 = simplex(out.noise_coordinate);
@@ -74,13 +74,13 @@ fn vs_main(
     let octave_9 = simplex(out.noise_coordinate * 6.1);
 
     // Create a slightly noisy heat map, with equatorial regions getting hotter
-    let vertical_heat = 1.0 - out.latitude * 1.3;
+    let vertical_heat = 1.0 - latitude * 1.3;
     let heat_noise = 0.2 + rebound(octave_1) * 0.8;
     out.heat = bound(vertical_heat * heat_noise, 0.0, 1.0);
 
     // Create a rough height map out of ice caps (high latitude), several
     // noise layers, and a global sea level
-    let ice_caps = bound(out.latitude - 0.5, 0.0, 0.2) * 4.5;
+    let ice_caps = bound(latitude - 0.5, 0.0, 0.2) * 4.5;
     let height_noise = octave_1 + octave_4 * 0.65 + octave_7 * 0.25 - sea_level;
     out.rough_height = height_noise + ice_caps;
 
@@ -90,24 +90,26 @@ fn vs_main(
     let precipitation_noise = octave_8 * 0.3;
     out.precipitation = bound(wetness - inverse_height + precipitation_noise, 0.0, 1.0);
 
-    // Create wind speed, which effects how elongated (on the x-z plane) clouds
-    // are
-    let wind_speed = octave_2 * octave_3 + octave_5 * 0.5;
-    let wind_speed_coordinate = vec3<f32>(
-        out.noise_coordinate.x * rebound(wind_speed) * 2.0,
-        out.noise_coordinate.y * 3.0,
-        out.noise_coordinate.z * rebound(wind_speed) * 2.0
-    );
-    
-    // Adjust cloud coordinate to cloud offset (for moving clouds)
-    let cloud_coordinate = wind_speed_coordinate + data.cloud_offset.xyz * cloud_speed;
+    if (data.clouds_disabled.x == 0) {
+        // Create wind speed, which effects how elongated (on the x-z plane) clouds
+        // are
+        let wind_speed = octave_2 * octave_3 + octave_5 * 0.5;
+        let wind_speed_coordinate = vec3<f32>(
+            out.noise_coordinate.x * rebound(wind_speed) * 2.0,
+            out.noise_coordinate.y * 3.0,
+            out.noise_coordinate.z * rebound(wind_speed) * 2.0
+        );
+        
+        // Adjust cloud coordinate to cloud offset (for moving clouds)
+        let cloud_coordinate = wind_speed_coordinate + data.cloud_offset.xyz * cloud_speed;
 
-    // For cloud cover, use composite noise of wind speed, along with a few
-    // additional noise layers
-    let cloud_noise_1 = simplex(cloud_coordinate);
-    let cloud_noise_2 = simplex(cloud_coordinate * 3.05);
-    let cloud_noise_3 = simplex(cloud_coordinate * 6.05);
-    out.cloud_cover = cloud_noise_1 + cloud_noise_2 * 0.5 + cloud_noise_3 * 0.15 - sky_clearness;
+        // For cloud cover, use composite noise of wind speed, along with a few
+        // additional noise layers
+        let cloud_noise_1 = simplex(cloud_coordinate);
+        let cloud_noise_2 = simplex(cloud_coordinate * 3.05);
+        let cloud_noise_3 = simplex(cloud_coordinate * 6.05);
+        out.cloud_cover = cloud_noise_1 + cloud_noise_2 * 0.5 + cloud_noise_3 * 0.15 - sky_clearness;
+    }
 
     return out;
 }
@@ -121,12 +123,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let height_noise = height_1 * 0.2 + height_2 * 0.1 + height_3 * 0.05;
     let detailed_height = in.rough_height + height_noise;
 
-    // Add detail to cloud map
-    let cloud_coordinate = in.noise_coordinate + data.cloud_offset.xyz * cloud_speed;
-    let cloud_1 = simplex(cloud_coordinate * 16.0);
-    let cloud_2 = simplex(cloud_coordinate * 28.0);
-    let cloud_noise = cloud_1 * 0.2 + cloud_2 * 0.2;
-    let detailed_cloud_cover = in.cloud_cover + cloud_noise;
+    var detailed_cloud_cover: f32;
+    if (data.clouds_disabled.x == 0) {
+        // Add detail to cloud map
+        let cloud_coordinate = in.noise_coordinate + data.cloud_offset.xyz * cloud_speed;
+        let cloud_1 = simplex(cloud_coordinate * 16.0);
+        let cloud_2 = simplex(cloud_coordinate * 28.0);
+        let cloud_noise = cloud_1 * 0.2 + cloud_2 * 0.2;
+        detailed_cloud_cover = in.cloud_cover + cloud_noise;
+    }   
 
     // Compute the atmosphere color based on the angle of incident as light
     // enters the atmosphere
@@ -198,7 +203,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cloud_dy = dpdy(detailed_cloud_cover);
 
     // Blend with cloud layer
-    if (detailed_cloud_cover >= 0.) {
+    if (data.clouds_disabled.x == 0 && detailed_cloud_cover >= 0.) {
         // Blend into the cloud color when covered by clouds
         terrain_color = blend(detailed_cloud_cover, 0.5, terrain_color, cloud_color);
 

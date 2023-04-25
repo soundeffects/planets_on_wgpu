@@ -147,6 +147,7 @@ impl Pipeline {
         controller.update_camera(&mut self.camera);
         self.uniform_data.update_camera(&self.camera);
 
+        controller.update_planet(&mut self.planet);
         self.planet.increment_rotation();
         self.planet.increment_clouds();
         self.uniform_data.update_planet(&self.planet);
@@ -189,6 +190,7 @@ pub struct UniformData {
     planet_rotation: [[f32; 4]; 4],
     noise_offset: [f32; 4],
     cloud_offset: [f32; 4],
+    clouds_disabled: [i32; 4],
 }
 
 impl UniformData {
@@ -199,6 +201,7 @@ impl UniformData {
             planet_rotation: cgmath::Matrix4::identity().into(),
             noise_offset: [0.; 4],
             cloud_offset: [0.; 4],
+            clouds_disabled: [0; 4],
         }
     }
 
@@ -212,5 +215,6 @@ impl UniformData {
         self.cloud_offset = [planet.cloud_offset() as f32; 4];
         let offsets = planet.noise_offset();
         self.noise_offset = [offsets[0], offsets[1], offsets[2], 0.];
+        self.clouds_disabled = [planet.clouds_disabled() as i32; 4];
     }
 }
