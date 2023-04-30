@@ -259,14 +259,14 @@ impl CameraController {
 
         // Ease the transition between orbit and surface
         if self.surface_mode {
-            if self.surface_interpolation >= 0.99 {
+            if self.surface_interpolation >= 0.999 {
                 self.surface_interpolation = 1.;
             } else {
                 let difference = 1. - self.surface_interpolation;
                 self.surface_interpolation = 1. - difference * 0.9;
             }
         } else {
-            if self.surface_interpolation <= 0.01 {
+            if self.surface_interpolation <= 0.001 {
                 self.surface_interpolation = 0.;
             } else {
                 self.surface_interpolation *= 0.9;
@@ -274,7 +274,7 @@ impl CameraController {
         }
 
         // Motion inertia; slowly trends towards zero
-        if self.motion.magnitude() <= 0.01 {
+        if self.motion.magnitude() <= 0.001 {
             self.motion = Vector2::zero();
         } else {
             self.motion *= 0.9;

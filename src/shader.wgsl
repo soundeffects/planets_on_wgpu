@@ -240,12 +240,8 @@ fn logistic(x: f32, x_0: f32, k: f32) -> f32 {
     return 1.0 / (1.0 + exp(-k * (x - x_0)));
 }
 
-fn band(x: f32, min: f32, max: f32) -> f32 {
-    return logistic(x, min, 20.0) - logistic(x, max, 20.0);
-}
-
-fn bound(x: f32, min: f32, max: f32) -> f32 {
-    return min(max(x, min), max);
+fn bound(x: f32, bound_min: f32, bound_max: f32) -> f32 {
+    return min(max(x, bound_min), bound_max);
 }
 
 fn rebound(x: f32) -> f32 {
