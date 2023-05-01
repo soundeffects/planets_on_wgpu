@@ -2,7 +2,6 @@
 use wasm_bindgen::prelude::*;
 
 use winit::{
-    dpi::PhysicalSize,
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,

@@ -63,7 +63,7 @@ impl Backend {
             .formats
             .iter()
             .copied()
-            .filter(|f| f.describe().srgb)
+            .filter(|f| f.is_srgb())
             .next()
             .unwrap_or(capabilities.formats[0]);
 

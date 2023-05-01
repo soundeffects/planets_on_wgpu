@@ -12,21 +12,70 @@
             background-color: black;
             margin: 0;
             padding: 0;
+            overflow: hidden;
         }
 
         canvas {
             width: 100% !important;
             height: 100% !important;
+            outline: 0;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            bottom: 50%;
+            transform: translate(-50%, -50%);
+            z-index: -1;
+        }
+
+        h1,
+        a,
+        p {
+            font-family: Arial, Helvetica, sans-serif;
+            text-align: center;
+            text-shadow: 0 0 10px black;
+            font-weight: 500;
+            color: white;
+            display: block;
+        }
+
+        footer,
+        h1 {
+            position: fixed;
+            left: 0;
+            right: 0;
+        }
+
+        footer {
+            bottom: 0;
+        }
+
+        h1 {
+            top: 0;
+        }
+
+        .subtitle {
+            font-size: 20px;
+        }
+
+        .light {
+            color: gray;
         }
     </style>
 </head>
 
 <body>
+    <h1>planets on wgpu, <span class="light subtitle">by james youngblood</span>
+    </h1>
+
+    <footer>
+        <a href="https://github.com/soundeffects/planets_on_wgpu">
+            github.com/soundeffects/planets_on_wgpu</a>
+        <p class="light">Use the mouse or arrow keys to move. Press SPACE or
+            scroll to zoom in. Press C to turn off clouds.</p>
+    </footer>
     <script type="module">
         import init from "./wasm/planets_on_wgpu.js"
-        init().then(() => {
-            console.log("WASM Loaded!");
-        })
+        init();
     </script>
 </body>
 

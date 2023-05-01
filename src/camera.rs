@@ -1,9 +1,7 @@
 use cgmath::*;
 use winit::{
     dpi::PhysicalPosition,
-    event::{
-        ElementState, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode, WindowEvent,
-    },
+    event::{ElementState, KeyboardInput, MouseScrollDelta, VirtualKeyCode, WindowEvent},
 };
 
 use crate::planet::Planet;

@@ -1,7 +1,11 @@
 {
   "name": "planets_on_wgpu",
-  "description": "",
+  "collaborators": [
+    "James Youngblood <james@youngbloods.org>"
+  ],
+  "description": "A randomly generated planet, rendered with wgpu",
   "version": "0.1.0",
+  "license": "Apache OR MIT",
   "files": [
     "planets_on_wgpu_bg.wasm",
     "planets_on_wgpu.js",

@@ -1,4 +1,4 @@
-use cgmath::{Deg, Matrix4, SquareMatrix};
+use cgmath::{Deg, Matrix4};
 use hexasphere::shapes::IcoSphere;
 use std::mem::size_of;
 
